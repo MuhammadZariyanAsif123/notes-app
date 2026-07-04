@@ -9,49 +9,63 @@ import * as yup from "yup"
 import Modal from "./components/Modal/Modal";
 import Pagination from "./components/Pagination/Pagination";
 import { Show, SignInButton, UserButton } from "@clerk/nextjs"
-import Chat from "./components/Chat/Chat";
 
 // Import modern Feather Icons from react-icons
-import { FiCommand, FiArrowRight, FiEdit2, FiTrash2, FiX } from "react-icons/fi";
+import { FiCommand, FiArrowRight, FiEdit2, FiTrash2, FiX, FiExternalLink, FiSearch } from "react-icons/fi";
 
-interface Notes {
+export interface Notes {
   id: number
   title: string
   content: string
   createdAt: string
   updatedAt: string
+  mood?: string
 }
 
+const schema = yup.object({
+  title: yup.string().required("Don't forget a title"),
+  content: yup.string().required("Note content cannot be empty")
+}).required()
+
+type NoteFormData = yup.InferType<typeof schema>;
+
 export default function Home() {
-  const schema = yup.object({
-    title: yup.string().required("Don't forget a title"),
-    content: yup.string().required("Note content cannot be empty")
-  }).required()
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors }
-  } = useForm({
+  } = useForm<NoteFormData>({
     resolver: yupResolver(schema)
   })
 
   const [notesList, setNotesList] = useState<Notes[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [filteredNotes, setFilteredNotes] = useState<Notes>()
+  const [selectedNote, setSelectedNote] = useState<Notes>()
 
   const [viewNote, setViewNote] = useState<Notes | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [isDisabled, setIsDisabled] = useState<boolean>(false)
   const [summary, setSummary] = useState<string>("")
+  const [searchQuery, setSearchQuery] = useState<string>("")
 
+  // 1. FILTER FIRST (Derived state calculated on every render)
+  const displayedNotes = notesList.filter((note) => {
+    const query = searchQuery.toLowerCase();
+    const titleMatch = note.title?.toLowerCase().includes(query);
+    const contentMatch = note.content?.toLowerCase().includes(query);
+    const moodMatch = note.mood?.toLowerCase().includes(query);
+    return titleMatch || contentMatch || moodMatch;
+  });
 
-  let pageSize = 6;
+  // 2. SLICE AND PAGINATE BASED ON FILTERED RESULTS
+  let pageSize = 4;
   let start = (currentPage - 1) * pageSize
   let end = start + pageSize
-  const totalPages = Math.ceil(notesList.length / pageSize)
+  // Dynamic total pages calculation using the filtered array length
+  let totalPages = Math.ceil(displayedNotes.length / pageSize)
 
   useEffect(() => {
     fetchNotes()
@@ -62,6 +76,11 @@ export default function Home() {
       setCurrentPage(totalPages)
     }
   }, [totalPages])
+
+  // Reset to page 1 whenever the query changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
 
   const fetchNotes = async () => {
     try {
@@ -77,7 +96,7 @@ export default function Home() {
     }
   }
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: NoteFormData) => {
     setIsLoading(true)
     try {
       const response = await fetch("/api/createNotes", {
@@ -117,7 +136,7 @@ export default function Home() {
   const editNote = (id: number) => {
     setIsOpen(true)
     const notes = notesList.find((item: Notes) => item.id == id)
-    setFilteredNotes(notes)
+    setSelectedNote(notes)
   }
 
   const summarizeNotes = async (notes: Notes) => {
@@ -142,9 +161,7 @@ export default function Home() {
   }
 
   const acceptSummary = async (notes: Notes) => {
-
     setIsLoading(true)
-
     try {
       const response = await fetch('/api/updateNotes', {
         method: "POST",
@@ -161,18 +178,36 @@ export default function Home() {
         setViewNote(null)
         setSummary("")
       }
-
-    }
-
-    catch (error: any) {
+    } catch (error: any) {
       toast.error(error)
-    }
-
-    finally {
+    } finally {
       setIsLoading(false)
     }
-
   }
+
+  const shareNote = async (id: number) => {
+    try {
+      const response = await fetch('/api/shareNote', {
+        method: 'POST',
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(id)
+      })
+
+      if (response.status === 200) {
+        const data = await response.json()
+        const link = process.env.NEXT_PUBLIC__APP_URL?.concat(`/share/${data.link}`) || ""
+        await navigator.clipboard.writeText(link)
+        toast.success("Link Copied Successfully")
+      }
+    } catch (error: any) {
+      toast.error(error)
+    }
+  }
+
+  const searchNotes = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const currentQuery = event.target.value.toLowerCase();
+    setSearchQuery(currentQuery)
+  };
 
   return (
     <>
@@ -188,7 +223,7 @@ export default function Home() {
               <div className="w-8 h-8 rounded-full bg-zinc-900 text-white flex items-center justify-center group-hover:rotate-12 transition-transform duration-500">
                 <FiCommand className="w-4 h-4" />
               </div>
-              <span className="font-black tracking-tight text-lg">Nexus</span>
+              <span className="font-black tracking-tight text-lg uppercase">Note Drop</span>
             </div>
             <div className="flex items-center gap-2 scale-90 sm:scale-100">
               <Show when="signed-in"><UserButton /></Show>
@@ -246,6 +281,33 @@ export default function Home() {
 
           {/* Right Column (Independently Scrollable on Desktop) */}
           <section className="flex-1 lg:h-full lg:overflow-y-auto sleek-scroll lg:pr-4 pb-20 lg:pb-10">
+            {!isLoading && notesList.length > 0 && (
+              <div className="w-full mb-2 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
+                <div className="relative w-full max-w-md ml-auto">
+                  <span className="absolute inset-y-0 left-4 flex items-center text-zinc-400 pointer-events-none">
+                    <FiSearch className="w-4 h-4" />
+                  </span>
+
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(event) => searchNotes(event)}
+                    placeholder="Search notes..."
+                    className="w-full h-11 bg-white/60 hover:bg-white/90 focus:bg-white text-zinc-900 text-sm font-medium placeholder:text-zinc-400 outline-none rounded-full pl-11 pr-4 border border-zinc-200 focus:border-indigo-500 shadow-xs focus:shadow-[0_8px_20px_rgba(99,102,241,0.08)] transition-all duration-300"
+                  />
+
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute inset-y-0 right-4 flex items-center text-zinc-400 hover:text-zinc-600 transition-colors"
+                    >
+                      <FiX className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="flex justify-center items-center h-full min-h-75">
                 <div className="relative flex justify-center items-center">
@@ -261,30 +323,40 @@ export default function Home() {
                 <h3 className="text-xl font-black text-zinc-800">It's pretty quiet here.</h3>
                 <p className="text-zinc-500 mt-1 text-sm font-medium">Create your first note to get started.</p>
               </div>
+            ) : displayedNotes.length === 0 ? (
+              /* No matching search query placeholder */
+              <div className="h-full min-h-80 flex flex-col items-center justify-center bg-white/40 border border-zinc-200 rounded-4xl p-8 text-center animate-fade-in-up">
+                <span className="text-2xl mb-3">🔍</span>
+                <h3 className="text-base font-bold text-zinc-700">No results found</h3>
+                <p className="text-zinc-400 text-xs mt-0.5">We couldn't find anything matching "{searchQuery}"</p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                {notesList.slice(start, end).map((item: Notes) => (
+                {/* 3. MAP OVER DYNAMICALLY SLICED DECORATED LIST */}
+                {displayedNotes.slice(start, end).map((item: Notes) => (
                   <div
                     key={item.id}
-                    className="group bg-white/90 backdrop-blur-md border border-white/60 rounded-3xl p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_20px_40px_-12px_rgba(0,0,0,0.12)] hover:-translate-y-1 transition-all duration-400 flex flex-col h-55 relative overflow-hidden animate-fade-in-up"
+                    className="group bg-white/90 backdrop-blur-md border border-white/60 rounded-3xl p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-blue-200 hover:-translate-y-1 transition-all duration-400 flex flex-col h-55 relative overflow-hidden animate-fade-in-up"
                   >
-
                     <div className="flex justify-between items-start mb-4 relative z-10">
                       <div className="bg-zinc-100 text-zinc-600 text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full">
-                        {new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(item.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
 
                       <div className="flex gap-1.5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                        <button onClick={() => editNote(item.id)} className="w-7 h-7 flex items-center justify-center bg-zinc-900 text-white rounded-full hover:scale-110 active:scale-95 transition-all shadow-sm" title="Edit">
+                        <button onClick={() => editNote(item.id)} className="w-7 h-7 flex items-center justify-center cursor-pointer bg-zinc-900 text-white rounded-full hover:scale-110 active:scale-95 transition-all shadow-sm" title="Edit">
                           <FiEdit2 className="w-3 h-3" />
                         </button>
-                        <button onClick={() => deleteNote(item.id)} className="w-7 h-7 flex items-center justify-center bg-rose-500 text-white rounded-full hover:scale-110 active:scale-95 transition-all shadow-sm" title="Delete">
+                        <button onClick={() => deleteNote(item.id)} className="w-7 h-7 cursor-pointer flex items-center justify-center bg-rose-500 text-white rounded-full hover:scale-110 active:scale-95 transition-all shadow-sm" title="Delete">
                           <FiTrash2 className="w-3 h-3" />
+                        </button>
+                        <button onClick={() => shareNote(item.id)} className="w-7 h-7 cursor-pointer flex items-center justify-center bg-rose-500 text-white rounded-full hover:scale-110 active:scale-95 transition-all shadow-sm" title="Share Link">
+                          <FiExternalLink className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
+                    <div className="flex-1 relative z-10 flex flex-col">
                       <h3 className="font-black text-lg tracking-tight text-zinc-900 mb-2 truncate">
                         {item.title}
                       </h3>
@@ -292,22 +364,35 @@ export default function Home() {
                         {item.content}
                       </p>
 
-                      <button
-                        onClick={() => setViewNote(item)}
-                        className="mt-auto text-left text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 group/btn w-max"
-                      >
-                        Read full note
-                        <FiArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
-                      </button>
-                    </div>
+                      <div className="flex items-center justify-between mt-5">
+                        <button
+                          onClick={() => setViewNote(item)}
+                          className="text-xs font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 group/btn"
+                        >
+                          Read full note
+                          <FiArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
+                        </button>
 
-                    <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-linear-to-br from-indigo-100 to-purple-100 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+                        {item.mood && (
+                          <div className="relative group/mood">
+                            <div className="absolute -inset-1 rounded-full bg-linear-to-r from-pink-400 via-violet-400 to-indigo-400 opacity-30 blur-lg group-hover/mood:opacity-60 transition duration-500" />
+                            <span className="absolute -top-1 -left-1 text-[8px] text-yellow-400 animate-pulse">✦</span>
+                            <span className="absolute -bottom-1 -right-1 text-[8px] text-pink-400 animate-pulse delay-300">✦</span>
+                            <div className="relative flex items-center gap-2 rounded-full border border-white/60 bg-white/70 backdrop-blur-xl px-3 py-1.5 shadow-lg transition-all duration-300 group-hover/mood:scale-105">
+                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-linear-to-br from-yellow-200 to-orange-200 shadow-sm">✨</div>
+                              <span className="max-w-30 truncate text-[11px] font-semibold text-zinc-700">{item.mood}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {!isLoading && notesList.length > 0 && (
+            {/* Pagination renders based on total pages derived directly from search matches */}
+            {!isLoading && displayedNotes.length > 0 && (
               <div className="mt-8 mb-4 flex justify-center animate-fade-in-up" style={{ animationDelay: '400ms' }}>
                 <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
               </div>
@@ -322,20 +407,16 @@ export default function Home() {
         />
 
         {isOpen && (
-          <Modal handleModal={setIsOpen} isOpen={isOpen} notes={filteredNotes} handleLoader={setIsLoading} />
+          <Modal handleModal={setIsOpen} isOpen={isOpen} notes={selectedNote} loader={loader} />
         )}
 
-        {/* Reading Mode Overlay */}
         {viewNote && (
           <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6">
             <div
               className="absolute inset-0 bg-zinc-900/30 backdrop-blur-sm cursor-pointer transition-opacity"
               onClick={() => { setViewNote(null); setSummary(""); }}
             />
-
             <div className="relative w-full max-w-2xl max-h-[85vh] bg-white rounded-4xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden animate-pop-in">
-
-              {/* Header */}
               <div className="px-6 py-5 border-b border-zinc-100 flex justify-between items-center bg-white z-10 shrink-0">
                 <h2 className="text-xl font-black text-zinc-900 truncate pr-4">{viewNote.title}</h2>
                 <button
@@ -346,71 +427,45 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Scrollable content */}
               <div className="p-6 sm:p-8 overflow-y-auto sleek-scroll bg-zinc-50/50 flex-1 space-y-6">
-                {/* Original note content */}
-                <p className="text-zinc-600 font-medium leading-relaxed whitespace-pre-wrap text-[15px] sm:text-base">
-                  {viewNote.content}
-                </p>
-
-                {/* AI Summary — only shown once available */}
+                <p className="text-zinc-600 font-medium leading-relaxed whitespace-pre-wrap text-[15px] sm:text-base">{viewNote.content}</p>
                 {summary && (
                   <div className="border-t border-zinc-100 pt-5">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500">
-                        ✨ AI Summary
-                      </span>
-
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500">✨ AI Summary</span>
                       <button
                         onClick={() => acceptSummary({ ...viewNote, content: summary })}
                         className="text-[10px] flex flex-row gap-2 text-zinc-400 hover:text-zinc-600 font-bold transition-colors"
                       >
-
                         <span>Accept </span>
-                        {isLoading &&
-                          <Image className="relative z-10 " src={loader} alt="Loading..." width={10} height={10} />
-                        }
+                        {isLoading && <Image className="relative z-10 " src={loader} alt="Loading..." width={10} height={10} />}
                       </button>
-
-                      <button
-                        onClick={() => setSummary("")}
-                        className="text-[10px] text-zinc-400 hover:text-zinc-600 font-bold transition-colors"
-                      >
-                        Dismiss
-                      </button>
-
-
+                      <button onClick={() => setSummary("")} className="text-[10px] text-zinc-400 hover:text-zinc-600 font-bold transition-colors">Dismiss</button>
                     </div>
                     <div className="bg-indigo-50/60 border border-indigo-100 rounded-[1.25rem] px-5 py-4">
-                      <p className="text-zinc-700 text-sm font-medium leading-relaxed">
-                        {summary}
-                      </p>
+                      <p className="text-zinc-700 text-sm font-medium leading-relaxed">{summary}</p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Footer */}
               <div className="px-6 py-4 border-t border-zinc-100 bg-white flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0">
                 <span className="text-xs font-bold text-zinc-400">
                   {new Date(viewNote.updatedAt).toLocaleDateString('en-US', {
-                    month: 'long', day: 'numeric', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit'
+                    month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
                   })}
                 </span>
-
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setViewNote(null); setSummary(""); editNote(viewNote.id); }}
-                    className="px-5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-sm font-bold rounded-full transition-colors"
+                    className="px-5 py-2 bg-zinc-100 cursor-pointer hover:bg-zinc-200 text-zinc-700 text-sm font-bold rounded-full transition-colors"
                   >
                     Edit
                   </button>
-
                   <button
                     onClick={() => summarizeNotes(viewNote)}
                     disabled={isDisabled}
-                    className="px-5 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-full transition-colors flex items-center gap-2"
+                    className="px-5 py-2 bg-indigo-500 cursor-pointer hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-full transition-colors flex items-center gap-2"
                   >
                     {isDisabled ? (
                       <>
@@ -426,9 +481,7 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div >
-
-      <Chat/>
+      </div>
     </>
   );
 }

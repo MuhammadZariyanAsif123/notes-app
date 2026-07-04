@@ -2,11 +2,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { FiX, FiEdit2, FiCheck } from "react-icons/fi";
-import loader from '../public/loader.svg'
+import Image from "next/image";
 
 
-export default function Modal({ handleModal, isOpen, notes, handleLoader }: any) {
-
+export default function Modal({ handleModal, isOpen, notes, loader }: any) {
+    const [isLoading, setIsLoading] = useState<boolean>(false)
     const [formData, setFormData] = useState({
         title: "",
         content: "",
@@ -23,9 +23,8 @@ export default function Modal({ handleModal, isOpen, notes, handleLoader }: any)
     }, [notes]);
 
     const updateNote = async (id: number) => {
-
+        setIsLoading(true)
         try {
-
             const response = await fetch('/api/updateNotes', {
                 method: "POST",
                 headers: { 'content-type': 'application/json' },
@@ -48,6 +47,9 @@ export default function Modal({ handleModal, isOpen, notes, handleLoader }: any)
             toast.error(error)
         }
 
+        finally {
+            setIsLoading(false)
+        }
     }
 
     return (
@@ -130,14 +132,20 @@ export default function Modal({ handleModal, isOpen, notes, handleLoader }: any)
 
                     <button
                         onClick={() => updateNote(notes.id)}
-                        className="w-full sm:w-auto h-12 bg-zinc-900 text-white font-bold text-sm rounded-full px-8 shadow-[0_10px_20px_rgba(0,0,0,0.15)] hover:shadow-[0_15px_30px_rgba(0,0,0,0.25)] hover:-translate-y-0.5 transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 group overflow-hidden relative"
+                        className="w-full sm:w-auto h-12 bg-zinc-900 text-white font-bold text-sm rounded-full px-8 shadow-[0_10px_20px_rgba(0,0,0,0.15)]  hover:-translate-y-0.5 transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 group overflow-hidden relative"
                     >
                         <span className="relative z-10 flex items-center gap-2">
-                            Update Note
-                            <FiCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                            {isLoading ? <span> Updating</span> : <span> Update Note</span>}
+
+                            {isLoading ? (
+                                <Image className="relative z-10" src={loader} alt="Loading..." width={20} height={20} />
+
+                            ) :
+                                (
+                                    <FiCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                )}
                         </span>
                         {/* Hidden colorful glow that appears on hover */}
-                        <div className="absolute inset-0 bg-linear-to-r from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0" />
                     </button>
                 </div>
             </div>

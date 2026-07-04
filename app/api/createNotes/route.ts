@@ -1,6 +1,6 @@
 import prisma from '../../lib/prisma'
 import { auth } from '@clerk/nextjs/server';
-import generateEmbedding from '@/app/lib/generateEmbedding';
+import { detectMood } from '@/app/lib/detectMood';
 
 
 export async function POST(request: Request) {
@@ -17,22 +17,18 @@ export async function POST(request: Request) {
             data: {
                 title: body.title,
                 content: body.content,
-                userId: userId
+                userId: userId,
             }
         })
 
-        const embedding = await generateEmbedding(note.title + " " + note.content)
 
-        const vectorString = `[${embedding?.join(',')}]`
 
-        console.log("Vector string preview:", vectorString.substring(0, 50))
-        console.log("Vector string length:", vectorString.length)
-        console.log("Note id:", note.id)
+        const mood = await detectMood(note.title, note.content)
 
         await prisma.$executeRaw
             `
         UPDATE "Note"
-        SET embedding = ${vectorString}::vector
+        SET  mood = ${mood}
         WHERE id = ${note.id}
         `
 

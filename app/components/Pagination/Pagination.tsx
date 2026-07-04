@@ -1,3 +1,5 @@
+import { slidingWindow } from "@/app/lib/slidingWindow";
+
 interface PaginationProps {
     currentPage: number;
     totalPages: number;
@@ -5,6 +7,8 @@ interface PaginationProps {
 }
 
 export default function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
+
+    const visiblePages = slidingWindow(currentPage, totalPages)
 
     return (
         <div className="flex items-center justify-center gap-2 py-6 ">
@@ -17,18 +21,22 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pa
             </button>
 
             <div className="flex gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                        key={page}
-                        onClick={() => onPageChange(page)}
-                        className={`w-10 h-10 rounded-lg font-medium transition ${page === currentPage
-                            ? "bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-lg"
-                            : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-                            }`}
-                    >
-                        {page}
-                    </button>
-                ))}
+                {visiblePages.map((page) => {
+                    return (
+                        <button
+                            key={page}
+                            onClick={() => onPageChange(page)}
+                            className={`w-10 h-10 rounded-lg font-medium transition ${page === currentPage
+                                ? "bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-lg"
+                                : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                }`}
+                        >
+                            {page}
+                        </button>
+                    )
+                })
+
+                }
             </div>
 
             <button

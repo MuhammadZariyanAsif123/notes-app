@@ -18,7 +18,7 @@ NoteDrop is a polished note-taking app built with Next.js, Prisma, Clerk, and th
 - React 19
 - Tailwind CSS 4
 - Prisma ORM
-- PostgreSQL with the pgvector extension
+- PostgreSQL
 - Clerk for authentication
 - Google Generative AI for summaries and mood-related AI behavior
 
@@ -106,8 +106,3 @@ npm run lint
 - POST /api/summarizeNotes
 - GET /share/[link]
 
-## Notes
-
-- The app expects a PostgreSQL database with the vector extension available for Prisma schema support.
-- Shared notes are served from the public route under the share folder.
-- Clerk authentication is required for note creation and management.
